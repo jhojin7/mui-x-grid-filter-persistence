@@ -4,7 +4,9 @@
       "Bash(npm create:*)",
       "Bash(mkdir:*)",
       "Bash(npm install)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click"
     ],
     "deny": [],
     "ask": []

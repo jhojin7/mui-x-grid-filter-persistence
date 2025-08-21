@@ -6,13 +6,14 @@ import {
   GridToolbarExport, 
   GridToolbarColumnsButton 
 } from '@mui/x-data-grid'
-import { Box, Typography, Button, Chip, Paper, Grid, FormControl, InputLabel, Select, MenuItem, TextField } from '@mui/material'
+import { Box, Typography, Button, Chip, Paper, FormControl, InputLabel, Select, MenuItem, TextField } from '@mui/material'
 import './App.css'
 
 // Filter persistence
 const FILTER_MODEL_KEY = 'mui-datagrid-filter-model'
 const SORT_MODEL_KEY = 'mui-datagrid-sort-model'
 const COLUMN_VISIBILITY_KEY = 'mui-datagrid-column-visibility'
+const CUSTOM_FILTER_STATE_KEY = 'mui-datagrid-custom-filters'
 
 const saveToLocalStorage = (key, value) => {
   try {
@@ -32,9 +33,9 @@ const loadFromLocalStorage = (key, defaultValue = null) => {
     // Fix old filter models that might have incorrect operators
     if (key === FILTER_MODEL_KEY && data.items) {
       data.items = data.items.map(item => {
-        // Fix singleSelect columns that used 'equals' instead of 'is'
-        if (['brand', 'category', 'status', 'country'].includes(item.field) && item.operator === 'equals') {
-          return { ...item, operator: 'is' }
+        // Fix singleSelect columns that used 'is' instead of 'equals'
+        if (['brand', 'category', 'status', 'country'].includes(item.field) && item.operator === 'is') {
+          return { ...item, operator: 'equals' }
         }
         return item
       })
@@ -118,170 +119,357 @@ const generateProductData = (count = 500) => {
   })
 }
 
-// Multi-column filter component
-const MultiColumnFilter = ({ onApplyFilters, onClearFilters }) => {
-  const [brandFilter, setBrandFilter] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
-  const [priceFilter, setPriceFilter] = useState('')
-  const [priceOperator, setPriceOperator] = useState('>')
-  const [statusFilter, setStatusFilter] = useState('')
+// Universal filter component for any column type
+const UniversalFilterBuilder = ({ columns, onApplyFilters, onClearFilters }) => {
+  const [filters, setFilters] = useState(() => {
+    const saved = loadFromLocalStorage(CUSTOM_FILTER_STATE_KEY, { filters: [], logicOperator: 'and' })
+    return saved.filters.map(f => ({ ...f, id: Date.now() + Math.random() }))
+  })
+  const [logicOperator, setLogicOperator] = useState(() => {
+    const saved = loadFromLocalStorage(CUSTOM_FILTER_STATE_KEY, { filters: [], logicOperator: 'and' })
+    return saved.logicOperator
+  })
 
-  const brands = ['Apple', 'Samsung', 'Sony', 'Microsoft', 'Google', 'Amazon', 'Dell', 'HP', 'Lenovo', 'ASUS', 'Razer', 'Logitech', 'Corsair']
-  const categories = ['Computers & Laptops', 'Mobile & Tablets', 'Gaming', 'Audio & Video', 'Accessories', 'Home & Kitchen', 'Office Supplies']
-  const statuses = ['In Stock', 'Low Stock', 'Out of Stock', 'Pre-order']
+  // Save filter state to localStorage whenever it changes
+  useEffect(() => {
+    saveToLocalStorage(CUSTOM_FILTER_STATE_KEY, { filters, logicOperator })
+  }, [filters, logicOperator])
 
-  const handleApplyFilters = () => {
-    const filters = []
+  // Apply saved filters on component mount
+  useEffect(() => {
+    const savedFilters = filters.filter(f => 
+      f.field && f.operator && (
+        ['isEmpty', 'isNotEmpty'].includes(f.operator) || 
+        (f.value !== '' && f.value !== null && f.value !== undefined)
+      )
+    )
     
-    if (brandFilter) {
-      filters.push({
-        field: 'brand',
-        operator: 'is',
-        value: brandFilter
+    if (savedFilters.length > 0) {
+      onApplyFilters({
+        items: savedFilters.map(f => ({
+          field: f.field,
+          operator: f.operator,
+          value: f.value
+        })),
+        logicOperator
       })
     }
-    
-    if (categoryFilter) {
-      filters.push({
-        field: 'category',
-        operator: 'is',
-        value: categoryFilter
-      })
+  }, []) // Only run on mount
+
+  // Get operators based on column type
+  const getOperators = (columnType) => {
+    switch (columnType) {
+      case 'string':
+        return [
+          { value: 'contains', label: 'Contains' },
+          { value: 'equals', label: 'Equals' },
+          { value: 'startsWith', label: 'Starts with' },
+          { value: 'endsWith', label: 'Ends with' },
+          { value: 'isEmpty', label: 'Is empty' },
+          { value: 'isNotEmpty', label: 'Is not empty' }
+        ]
+      case 'number':
+        return [
+          { value: '=', label: 'Equals' },
+          { value: '!=', label: 'Not equals' },
+          { value: '>', label: 'Greater than' },
+          { value: '>=', label: 'Greater than or equal' },
+          { value: '<', label: 'Less than' },
+          { value: '<=', label: 'Less than or equal' },
+          { value: 'isEmpty', label: 'Is empty' },
+          { value: 'isNotEmpty', label: 'Is not empty' }
+        ]
+      case 'date':
+        return [
+          { value: 'is', label: 'Is' },
+          { value: 'not', label: 'Is not' },
+          { value: 'after', label: 'Is after' },
+          { value: 'onOrAfter', label: 'Is on or after' },
+          { value: 'before', label: 'Is before' },
+          { value: 'onOrBefore', label: 'Is on or before' },
+          { value: 'isEmpty', label: 'Is empty' },
+          { value: 'isNotEmpty', label: 'Is not empty' }
+        ]
+      case 'boolean':
+        return [
+          { value: 'is', label: 'Is' }
+        ]
+      case 'singleSelect':
+        return [
+          { value: 'equals', label: 'Is' },
+          { value: '!=', label: 'Is not' }
+        ]
+      default:
+        return [
+          { value: 'contains', label: 'Contains' },
+          { value: 'equals', label: 'Equals' }
+        ]
     }
-    
-    if (priceFilter) {
-      filters.push({
-        field: 'price',
-        operator: priceOperator,
-        value: parseFloat(priceFilter)
-      })
-    }
-    
-    if (statusFilter) {
-      filters.push({
-        field: 'status',
-        operator: 'is',
-        value: statusFilter
-      })
-    }
-    
-    onApplyFilters(filters)
   }
 
-  const handleClear = () => {
-    setBrandFilter('')
-    setCategoryFilter('')
-    setPriceFilter('')
-    setPriceOperator('>')
-    setStatusFilter('')
+  // Add new filter
+  const addFilter = () => {
+    const newFilter = {
+      id: Date.now() + Math.random(),
+      field: '',
+      operator: '',
+      value: ''
+    }
+    setFilters([...filters, newFilter])
+  }
+
+  // Remove filter
+  const removeFilter = (filterId) => {
+    setFilters(filters.filter(f => f.id !== filterId))
+  }
+
+  // Update filter
+  const updateFilter = (filterId, key, value) => {
+    setFilters(filters.map(f => {
+      if (f.id === filterId) {
+        const updated = { ...f, [key]: value }
+        // Reset operator and value when field changes
+        if (key === 'field') {
+          updated.operator = ''
+          updated.value = ''
+        }
+        return updated
+      }
+      return f
+    }))
+  }
+
+  // Get column by field name
+  const getColumn = (field) => columns.find(col => col.field === field)
+
+  // Render value input based on column type
+  const renderValueInput = (filter) => {
+    if (!filter.field || !filter.operator) return null
+
+    const column = getColumn(filter.field)
+    if (!column) return null
+
+    // No value needed for these operators
+    if (['isEmpty', 'isNotEmpty'].includes(filter.operator)) {
+      return null
+    }
+
+    switch (column.type) {
+      case 'number':
+        return (
+          <TextField
+            size="small"
+            type="number"
+            value={filter.value}
+            onChange={(e) => updateFilter(filter.id, 'value', parseFloat(e.target.value) || '')}
+            placeholder="Enter number"
+            sx={{ minWidth: 120 }}
+          />
+        )
+      case 'date':
+        return (
+          <TextField
+            size="small"
+            type="date"
+            value={filter.value}
+            onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ minWidth: 140 }}
+          />
+        )
+      case 'boolean':
+        return (
+          <FormControl size="small" sx={{ minWidth: 80 }}>
+            <Select
+              value={filter.value}
+              onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+            >
+              <MenuItem value={true}>True</MenuItem>
+              <MenuItem value={false}>False</MenuItem>
+            </Select>
+          </FormControl>
+        )
+      case 'singleSelect':
+        return (
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <Select
+              value={filter.value}
+              onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+            >
+              {column.valueOptions?.map(option => (
+                <MenuItem key={option} value={option}>{option}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )
+      default:
+        return (
+          <TextField
+            size="small"
+            value={filter.value}
+            onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+            placeholder="Enter value"
+            sx={{ minWidth: 120 }}
+          />
+        )
+    }
+  }
+
+  // Apply filters
+  const handleApplyFilters = () => {
+    const validFilters = filters.filter(f => 
+      f.field && f.operator && (
+        ['isEmpty', 'isNotEmpty'].includes(f.operator) || 
+        (f.value !== '' && f.value !== null && f.value !== undefined)
+      )
+    )
+    
+    onApplyFilters({
+      items: validFilters.map(f => ({
+        field: f.field,
+        operator: f.operator,
+        value: f.value
+      })),
+      logicOperator
+    })
+  }
+
+  // Clear all filters
+  const handleClearAll = () => {
+    setFilters([])
+    setLogicOperator('and')
+    saveToLocalStorage(CUSTOM_FILTER_STATE_KEY, { filters: [], logicOperator: 'and' })
     onClearFilters()
   }
 
   return (
-    <Paper sx={{ p: 2, mb: 2, backgroundColor: '#f8f9fa' }}>
-      <Typography variant="h6" sx={{ mb: 2, color: '#1976d2' }}>
-        🎯 Multi-Column Quick Filters
-      </Typography>
-      
-      <Grid container spacing={2} alignItems="center">
-        <Grid item xs={12} sm={6} md={2}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Brand</InputLabel>
-            <Select
-              value={brandFilter}
-              label="Brand"
-              onChange={(e) => setBrandFilter(e.target.value)}
-            >
-              <MenuItem value="">All Brands</MenuItem>
-              {brands.map(brand => (
-                <MenuItem key={brand} value={brand}>{brand}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={2}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Category</InputLabel>
-            <Select
-              value={categoryFilter}
-              label="Category"
-              onChange={(e) => setCategoryFilter(e.target.value)}
-            >
-              <MenuItem value="">All Categories</MenuItem>
-              {categories.map(category => (
-                <MenuItem key={category} value={category}>{category}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-
-        <Grid item xs={6} sm={3} md={1}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Price Op</InputLabel>
-            <Select
-              value={priceOperator}
-              label="Price Op"
-              onChange={(e) => setPriceOperator(e.target.value)}
-            >
-              <MenuItem value=">">&gt;</MenuItem>
-              <MenuItem value="<">&lt;</MenuItem>
-              <MenuItem value=">=">&gt;=</MenuItem>
-              <MenuItem value="<=">&lt;=</MenuItem>
-              <MenuItem value="=">=</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-
-        <Grid item xs={6} sm={3} md={1.5}>
-          <TextField
-            fullWidth
+    <Paper sx={{ p: 3, mb: 2, backgroundColor: '#f8f9fa' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h6" sx={{ color: '#1976d2' }}>
+          🎯 Universal Filter Builder
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
             size="small"
-            label="Price ($)"
-            type="number"
-            value={priceFilter}
-            onChange={(e) => setPriceFilter(e.target.value)}
-            placeholder="100.00"
-          />
-        </Grid>
+            onClick={addFilter}
+          >
+            + Add Filter
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleApplyFilters}
+            disabled={filters.length === 0}
+          >
+            Apply Filters ({filters.filter(f => f.field && f.operator).length})
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={handleClearAll}
+          >
+            Clear All
+          </Button>
+        </Box>
+      </Box>
 
-        <Grid item xs={12} sm={6} md={2}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Status</InputLabel>
+      {filters.length > 1 && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Logic Operator:</Typography>
+          <FormControl size="small">
             <Select
-              value={statusFilter}
-              label="Status"
-              onChange={(e) => setStatusFilter(e.target.value)}
+              value={logicOperator}
+              onChange={(e) => setLogicOperator(e.target.value)}
             >
-              <MenuItem value="">All Status</MenuItem>
-              {statuses.map(status => (
-                <MenuItem key={status} value={status}>{status}</MenuItem>
-              ))}
+              <MenuItem value="and">AND (all conditions must match)</MenuItem>
+              <MenuItem value="or">OR (any condition can match)</MenuItem>
             </Select>
           </FormControl>
-        </Grid>
+        </Box>
+      )}
 
-        <Grid item xs={12} sm={6} md={1.5}>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={handleApplyFilters}
-              sx={{ minWidth: 'auto' }}
-            >
-              Apply
-            </Button>
+      {filters.length === 0 && (
+        <Box sx={{ 
+          textAlign: 'center', 
+          py: 4, 
+          color: '#666',
+          border: '2px dashed #ddd',
+          borderRadius: 1
+        }}>
+          <Typography>Click "Add Filter" to start building your filter conditions</Typography>
+        </Box>
+      )}
+
+      {filters.map((filter, index) => {
+        const column = getColumn(filter.field)
+        const operators = column ? getOperators(column.type) : []
+
+        return (
+          <Box key={filter.id} sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 2, 
+            mb: 2,
+            p: 2,
+            backgroundColor: 'white',
+            borderRadius: 1,
+            border: '1px solid #e0e0e0'
+          }}>
+            {index > 0 && (
+              <Chip 
+                label={logicOperator.toUpperCase()} 
+                size="small" 
+                color="primary"
+                sx={{ minWidth: 50 }}
+              />
+            )}
+
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Column</InputLabel>
+              <Select
+                value={filter.field}
+                label="Column"
+                onChange={(e) => updateFilter(filter.id, 'field', e.target.value)}
+              >
+                {columns.filter(col => col.filterable !== false).map(col => (
+                  <MenuItem key={col.field} value={col.field}>
+                    {col.headerName || col.field}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Operator</InputLabel>
+              <Select
+                value={filter.operator}
+                label="Operator"
+                onChange={(e) => updateFilter(filter.id, 'operator', e.target.value)}
+                disabled={!filter.field}
+              >
+                {operators.map(op => (
+                  <MenuItem key={op.value} value={op.value}>
+                    {op.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {renderValueInput(filter)}
+
             <Button
               variant="outlined"
               size="small"
-              onClick={handleClear}
-              sx={{ minWidth: 'auto' }}
+              color="error"
+              onClick={() => removeFilter(filter.id)}
+              sx={{ minWidth: 'auto', px: 1 }}
             >
-              Clear
+              ✕
             </Button>
           </Box>
-        </Grid>
-      </Grid>
+        )
+      })}
     </Paper>
   )
 }
@@ -340,12 +528,9 @@ function App() {
     setFilterModel({ items: [] })
   }
 
-  const handleApplyMultiColumnFilters = (filters) => {
-    console.log('Applying filters:', filters)
-    setFilterModel({ 
-      items: filters,
-      logicOperator: 'and'
-    })
+  const handleApplyUniversalFilters = (filterModel) => {
+    console.log('Applying filters:', filterModel)
+    setFilterModel(filterModel)
   }
 
   // Column definitions
@@ -496,8 +681,9 @@ function App() {
         Professional data grid with persistent filters, sorting, and column management
       </Typography>
 
-      <MultiColumnFilter 
-        onApplyFilters={handleApplyMultiColumnFilters}
+      <UniversalFilterBuilder 
+        columns={columns}
+        onApplyFilters={handleApplyUniversalFilters}
         onClearFilters={handleClearFilters}
       />
 
