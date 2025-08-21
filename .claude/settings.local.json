@@ -6,7 +6,13 @@
       "Bash(npm install)",
       "Bash(npm install:*)",
       "mcp__playwright__browser_navigate",
-      "mcp__playwright__browser_click"
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_snapshot",
+      "Bash(npm run:*)",
+      "mcp__playwright__browser_wait_for",
+      "Bash(rm:*)",
+      "mcp__playwright__browser_select_option"
     ],
     "deny": [],
     "ask": []

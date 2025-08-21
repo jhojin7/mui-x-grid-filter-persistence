@@ -196,8 +196,8 @@ const UniversalFilterBuilder = ({ columns, onApplyFilters, onClearFilters }) => 
         ]
       case 'singleSelect':
         return [
-          { value: 'equals', label: 'Is' },
-          { value: '!=', label: 'Is not' }
+          { value: 'is', label: 'Is' },
+          { value: 'not', label: 'Is not' }
         ]
       default:
         return [
