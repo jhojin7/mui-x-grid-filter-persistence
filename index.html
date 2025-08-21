@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MUI X DataGrid with Advanced Filtering & Persistence</title>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+        #root {
+            width: 100%;
+            max-width: 1400px;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+        /* Custom styles for DataGrid */
+        .MuiDataGrid-root {
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            background-color: #ffffff;
+            border: none;
+        }
+        .MuiDataGrid-toolbarContainer {
+            padding: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+            background-color: #f9fafb;
+        }
+        .MuiDataGrid-columnHeaders {
+            background-color: #f9fafb;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .MuiDataGrid-columnHeaderTitle {
+            font-weight: 600;
+            color: #374151;
+        }
+        .MuiDataGrid-row:nth-of-type(even) {
+            background-color: #f9fafb;
+        }
+        .MuiDataGrid-row:hover {
+            background-color: #f3f4f6;
+        }
+        .info-box {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background-color: #dbeafe;
+            border: 1px solid #93c5fd;
+            border-radius: 0.5rem;
+            color: #1e40af;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- React and ReactDOM from CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Material-UI Core -->
+    <script src="https://unpkg.com/@mui/material@5.15.15/umd/material-ui.development.js"></script>
+    
+    <!-- Material-UI X DataGrid -->
+    <script src="https://unpkg.com/@mui/x-data-grid@6.18.7/umd/x-data-grid.development.js"></script>
+    
+    <script>
+        const { useState, useEffect, useMemo, createElement: h } = React;
+        const { Box, Typography, Button, Chip } = MaterialUI;
+        const { DataGrid, GridToolbarContainer, GridToolbarFilterButton, GridToolbarExport, GridToolbarColumnsButton } = window['@mui/x-data-grid'];
+
+        // --- Filter persistence ---
+        const FILTER_MODEL_KEY = 'mui-datagrid-filter-model';
+        const SORT_MODEL_KEY = 'mui-datagrid-sort-model';
+        const COLUMN_VISIBILITY_KEY = 'mui-datagrid-column-visibility';
+
+        const saveToLocalStorage = (key, value) => {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (e) {
+                console.error(`Error saving ${key} to localStorage:`, e);
+            }
+        };
+
+        const loadFromLocalStorage = (key, defaultValue = null) => {
+            try {
+                const stored = localStorage.getItem(key);
+                return stored ? JSON.parse(stored) : defaultValue;
+            } catch (e) {
+                console.error(`Error loading ${key} from localStorage:`, e);
+                return defaultValue;
+            }
+        };
+
+        // --- Data Generation ---
+        const generateProductData = (count = 500) => {
+            const products = [
+                "MacBook Pro", "iPhone", "iPad", "AirPods", "iMac", "Mac Mini",
+                "ThinkPad", "Surface Pro", "Galaxy Tab", "Pixel Phone", "Steam Deck",
+                "PlayStation 5", "Xbox Series X", "Nintendo Switch", "Gaming Monitor",
+                "Mechanical Keyboard", "Gaming Mouse", "Webcam", "Microphone", "Headphones",
+                "External SSD", "USB Hub", "Monitor Arm", "Standing Desk", "Office Chair",
+                "Coffee Machine", "Blender", "Air Fryer", "Robot Vacuum", "Smart TV",
+                "Soundbar", "Projector", "Tablet Stand", "Phone Case", "Screen Protector",
+                "Power Bank", "Wireless Charger", "Car Mount", "Bluetooth Speaker", "Fitness Tracker"
+            ];
+            
+            const categories = [
+                "Computers & Laptops", 
+                "Mobile & Tablets", 
+                "Gaming", 
+                "Audio & Video", 
+                "Accessories", 
+                "Home & Kitchen", 
+                "Office Supplies"
+            ];
+            
+            const brands = [
+                "Apple", "Samsung", "Sony", "Microsoft", "Google", "Amazon", 
+                "Dell", "HP", "Lenovo", "ASUS", "Razer", "Logitech", "Corsair"
+            ];
+            
+            const countries = ["USA", "China", "Japan", "Germany", "South Korea", "Taiwan", "UK", "Canada"];
+            const statuses = ["In Stock", "Low Stock", "Out of Stock", "Pre-order"];
+            
+            return Array.from({ length: count }, (_, i) => {
+                const id = i + 1;
+                const productIndex = i % products.length;
+                const brandIndex = Math.floor(Math.random() * brands.length);
+                const categoryIndex = Math.floor(i / 71) % categories.length;
+                
+                const basePrice = 50 + (i * 23) % 2000;
+                const discount = Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 5 : 0;
+                const price = parseFloat((basePrice * (1 - discount / 100)).toFixed(2));
+                
+                const stock = Math.floor(Math.random() * 1000);
+                const rating = parseFloat((3 + Math.random() * 2).toFixed(1));
+                const reviews = Math.floor(Math.random() * 5000);
+                
+                const releaseYear = 2020 + (i % 5);
+                const releaseMonth = i % 12;
+                const releaseDay = (i % 28) + 1;
+                const releaseDate = new Date(releaseYear, releaseMonth, releaseDay);
+                
+                return {
+                    id,
+                    name: `${brands[brandIndex]} ${products[productIndex]} ${Math.floor(i / 10) + 1}`,
+                    brand: brands[brandIndex],
+                    category: categories[categoryIndex],
+                    price,
+                    originalPrice: discount > 0 ? basePrice : null,
+                    discount,
+                    stock,
+                    status: stock > 100 ? 'In Stock' : stock > 20 ? 'Low Stock' : stock > 0 ? 'Out of Stock' : 'Pre-order',
+                    rating,
+                    reviews,
+                    releaseDate: releaseDate.toISOString().split('T')[0],
+                    country: countries[i % countries.length],
+                    isNew: i < 50,
+                    isFeatured: Math.random() > 0.8,
+                    weight: parseFloat((0.1 + Math.random() * 5).toFixed(2)),
+                    dimensions: `${Math.floor(10 + Math.random() * 30)}x${Math.floor(5 + Math.random() * 20)}x${Math.floor(1 + Math.random() * 10)}cm`
+                };
+            });
+        };
+
+        // Custom toolbar with clear filters button
+        const CustomToolbar = ({ onClearFilters }) => {
+            return h(GridToolbarContainer, { className: "gap-2 p-2" }, [
+                h(GridToolbarFilterButton, { key: "filter" }),
+                h(GridToolbarColumnsButton, { key: "columns" }),
+                h(GridToolbarExport, { key: "export" }),
+                h(Button, {
+                    key: "clear",
+                    size: "small",
+                    variant: "outlined",
+                    onClick: onClearFilters,
+                    sx: { ml: 1 }
+                }, "Clear All Filters")
+            ]);
+        };
+
+        // --- Main App Component ---
+        const App = () => {
+            const [rows, setRows] = useState([]);
+            const [filterModel, setFilterModel] = useState(() => 
+                loadFromLocalStorage(FILTER_MODEL_KEY, { items: [] })
+            );
+            const [sortModel, setSortModel] = useState(() => 
+                loadFromLocalStorage(SORT_MODEL_KEY, [])
+            );
+            const [columnVisibilityModel, setColumnVisibilityModel] = useState(() =>
+                loadFromLocalStorage(COLUMN_VISIBILITY_KEY, {})
+            );
+
+            // Load data on mount
+            useEffect(() => {
+                const data = generateProductData(500);
+                setRows(data);
+            }, []);
+
+            // Save models to localStorage when they change
+            useEffect(() => {
+                saveToLocalStorage(FILTER_MODEL_KEY, filterModel);
+            }, [filterModel]);
+
+            useEffect(() => {
+                saveToLocalStorage(SORT_MODEL_KEY, sortModel);
+            }, [sortModel]);
+
+            useEffect(() => {
+                saveToLocalStorage(COLUMN_VISIBILITY_KEY, columnVisibilityModel);
+            }, [columnVisibilityModel]);
+
+            const handleClearFilters = () => {
+                setFilterModel({ items: [] });
+            };
+
+            // Column definitions
+            const columns = useMemo(() => [
+                { 
+                    field: 'id', 
+                    headerName: 'ID', 
+                    width: 70,
+                    type: 'number'
+                },
+                { 
+                    field: 'name', 
+                    headerName: 'Product Name', 
+                    width: 250,
+                    type: 'string'
+                },
+                { 
+                    field: 'brand', 
+                    headerName: 'Brand', 
+                    width: 120,
+                    type: 'singleSelect',
+                    valueOptions: ['Apple', 'Samsung', 'Sony', 'Microsoft', 'Google', 'Amazon', 'Dell', 'HP', 'Lenovo', 'ASUS', 'Razer', 'Logitech', 'Corsair']
+                },
+                { 
+                    field: 'category', 
+                    headerName: 'Category', 
+                    width: 180,
+                    type: 'singleSelect',
+                    valueOptions: ['Computers & Laptops', 'Mobile & Tablets', 'Gaming', 'Audio & Video', 'Accessories', 'Home & Kitchen', 'Office Supplies']
+                },
+                { 
+                    field: 'price', 
+                    headerName: 'Price ($)', 
+                    width: 120,
+                    type: 'number',
+                    valueFormatter: (params) => `$${params.value.toFixed(2)}`
+                },
+                { 
+                    field: 'discount', 
+                    headerName: 'Discount (%)', 
+                    width: 130,
+                    type: 'number',
+                    renderCell: (params) => {
+                        if (params.value > 0) {
+                            return h(Chip, { 
+                                label: `${params.value}% OFF`, 
+                                color: "error", 
+                                size: "small" 
+                            });
+                        }
+                        return null;
+                    }
+                },
+                { 
+                    field: 'stock', 
+                    headerName: 'Stock', 
+                    width: 100,
+                    type: 'number'
+                },
+                { 
+                    field: 'status', 
+                    headerName: 'Status', 
+                    width: 120,
+                    type: 'singleSelect',
+                    valueOptions: ['In Stock', 'Low Stock', 'Out of Stock', 'Pre-order'],
+                    renderCell: (params) => {
+                        const colorMap = {
+                            'In Stock': 'success',
+                            'Low Stock': 'warning', 
+                            'Out of Stock': 'error',
+                            'Pre-order': 'info'
+                        };
+                        return h(Chip, { 
+                            label: params.value, 
+                            color: colorMap[params.value] || 'default',
+                            size: "small" 
+                        });
+                    }
+                },
+                { 
+                    field: 'rating', 
+                    headerName: 'Rating', 
+                    width: 100,
+                    type: 'number',
+                    valueFormatter: (params) => `★ ${params.value}`
+                },
+                { 
+                    field: 'reviews', 
+                    headerName: 'Reviews', 
+                    width: 100,
+                    type: 'number'
+                },
+                { 
+                    field: 'releaseDate', 
+                    headerName: 'Release Date', 
+                    width: 140,
+                    type: 'date',
+                    valueGetter: (params) => new Date(params.value)
+                },
+                { 
+                    field: 'country', 
+                    headerName: 'Origin', 
+                    width: 120,
+                    type: 'singleSelect',
+                    valueOptions: ['USA', 'China', 'Japan', 'Germany', 'South Korea', 'Taiwan', 'UK', 'Canada']
+                },
+                { 
+                    field: 'weight', 
+                    headerName: 'Weight (kg)', 
+                    width: 120,
+                    type: 'number'
+                },
+                { 
+                    field: 'isNew', 
+                    headerName: 'New', 
+                    width: 80,
+                    type: 'boolean',
+                    renderCell: (params) => {
+                        return params.value ? h(Chip, { label: "NEW", color: "primary", size: "small" }) : null;
+                    }
+                },
+                { 
+                    field: 'isFeatured', 
+                    headerName: 'Featured', 
+                    width: 100,
+                    type: 'boolean'
+                }
+            ], []);
+
+            return h(Box, { sx: { p: 3, backgroundColor: '#f5f5f5', minHeight: '100vh' } }, [
+                h(Typography, {
+                    key: "title",
+                    variant: "h3",
+                    component: "h1",
+                    gutterBottom: true,
+                    sx: { textAlign: 'center', mb: 1, fontWeight: 700, color: '#1976d2' }
+                }, "MUI X DataGrid - Advanced Filtering Demo"),
+                
+                h(Typography, {
+                    key: "subtitle", 
+                    variant: "h6",
+                    sx: { textAlign: 'center', mb: 4, color: '#666' }
+                }, "Professional data grid with persistent filters, sorting, and column management"),
+
+                h(Box, { key: "grid-container", sx: { height: 700, width: '100%', backgroundColor: 'white', borderRadius: 2 } }, [
+                    h(DataGrid, {
+                        key: "datagrid",
+                        rows,
+                        columns,
+                        filterModel,
+                        sortModel,
+                        columnVisibilityModel,
+                        onFilterModelChange: setFilterModel,
+                        onSortModelChange: setSortModel, 
+                        onColumnVisibilityModelChange: setColumnVisibilityModel,
+                        slots: {
+                            toolbar: CustomToolbar
+                        },
+                        slotProps: {
+                            toolbar: {
+                                onClearFilters: handleClearFilters
+                            }
+                        },
+                        initialState: {
+                            pagination: { 
+                                paginationModel: { pageSize: 25 } 
+                            }
+                        },
+                        pageSizeOptions: [10, 25, 50, 100],
+                        disableRowSelectionOnClick: true,
+                        sx: {
+                            '& .MuiDataGrid-cell:hover': {
+                                backgroundColor: '#f0f7ff'
+                            }
+                        }
+                    })
+                ]),
+
+                h(Box, {
+                    key: "info",
+                    className: "info-box"
+                }, [
+                    h(Typography, {
+                        key: "info-title",
+                        variant: "h6",
+                        sx: { fontWeight: 600, mb: 2 }
+                    }, "🚀 DataGrid Features Demonstrated:"),
+                    h('ul', {
+                        key: "features",
+                        style: { margin: 0, paddingLeft: '1.2rem' }
+                    }, [
+                        h('li', { key: "f1" }, "Advanced multi-column filtering with various operators (contains, equals, starts with, etc.)"),
+                        h('li', { key: "f2" }, "Persistent filter state - filters are saved to localStorage and restored on page reload"),
+                        h('li', { key: "f3" }, "Column sorting with persistent sort state"),
+                        h('li', { key: "f4" }, "Column show/hide functionality with state persistence"),
+                        h('li', { key: "f5" }, "Data export (CSV, Print) capabilities"),
+                        h('li', { key: "f6" }, "Multiple data types: string, number, boolean, date, single-select"),
+                        h('li', { key: "f7" }, "Custom cell rendering (chips for status, ratings, discounts)"),
+                        h('li', { key: "f8" }, "Responsive pagination with customizable page sizes")
+                    ])
+                ])
+            ]);
+        };
+
+        // Render the App
+        ReactDOM.render(h(App), document.getElementById('root'));
+    </script>
+</body>
+</html>
